@@ -1,0 +1,744 @@
+Global heading_2 As String
+
+
+Sub namecheck()
+    Dim wsnames(6) As String
+    wsnames(0) = "SAPnos"
+    wsnames(1) = "Arbeitsplatz"
+    wsnames(2) = "QM15"
+    wsnames(3) = "QM11"
+    wsnames(4) = "emails"
+    wsnames(5) = "Menu"
+    wsnames(6) = "Anleitung"
+    
+    For Each ws In wsnames
+        i = 0
+        For Each w In ThisWorkbook.Worksheets
+            If ws = w.name Then
+               i = 1
+               Exit For
+            End If
+        Next
+        If i = 0 Then
+            MsgBox "Fehler: Arbeitsblatt " + ws + " fehlt.", vbExclamation
+            End
+        End If
+    Next
+    
+    Dim SAPnosNames(1) As String
+    SAPnosNames(0) = "Artikel SAP"
+    SAPnosNames(1) = "Artikel"
+    
+    For Each n In SAPnosNames
+        i = 0
+        For Each name In ThisWorkbook.Sheets("SAPnos").Range("A1:E1")
+            If n = name.Value Then
+                i = 1
+                Exit For
+            End If
+        Next
+        If i = 0 Then
+            MsgBox "Fehler: Spalte " + n + " in Arbeitsblatt SAPnos nicht gefunden. Korrigieren Sie den Namen und speichern Sie die Datei. Der Name darf auch keine Leerzeichen enthalten.", vbExclamation
+            End
+        End If
+    Next
+    
+    Dim ArbeitsplatzNames(2) As String
+    ArbeitsplatzNames(0) = "ArbPltz"
+    ArbeitsplatzNames(1) = "Werk"
+    ArbeitsplatzNames(2) = "Beschreibung"
+    
+    
+    For Each n In ArbeitsplatzNames
+        i = 0
+        For Each name In ThisWorkbook.Sheets("Arbeitsplatz").Range("A1:K1")
+            If n = name.Value Then
+                i = 1
+                Exit For
+            End If
+        Next
+        If i = 0 Then
+            MsgBox "Fehler: Spalte " + n + " in Arbeitsblatt Arbeitsplatz nicht gefunden. Korrigieren Sie den Namen und speichern Sie die Datei. Der Name darf auch keine Leerzeichen enthalten.", vbExclamation
+            End
+        End If
+    Next
+    
+    Dim QM15Names(6) As String
+    QM15Names(0) = "Angelegt am"
+    QM15Names(1) = "Problemcodetext"
+    QM15Names(2) = "Material"
+    QM15Names(3) = "Angelegt um"
+    QM15Names(4) = "Auftrag"
+    QM15Names(5) = "Meldung"
+    QM15Names(6) = "Fehlerzahl"
+   
+    
+    For Each n In QM15Names
+        i = 0
+        For Each name In ThisWorkbook.Sheets("QM15").Range("A1:S1")
+            If n = name.Value Then
+                i = 1
+                Exit For
+            End If
+        Next
+        If i = 0 Then
+            MsgBox "Fehler: Spalte " + n + " in Arbeitsblatt QM15 nicht gefunden. Korrigieren Sie den Namen und speichern Sie die Datei. Der Name darf auch keine Leerzeichen enthalten.", vbExclamation
+            End
+        End If
+    Next
+    
+    Dim QM11Names(1) As String
+    QM11Names(0) = "Meldung"
+    QM11Names(1) = "Arbeitsplatz"
+    
+    For Each n In QM11Names
+        i = 0
+        For Each name In ThisWorkbook.Sheets("QM11").Range("A1:S1")
+            If n = name.Value Then
+                i = 1
+                Exit For
+            End If
+        Next
+        If i = 0 Then
+            MsgBox "Fehler: Spalte " + n + " in Arbeitsblatt QM11 nicht gefunden. Korrigieren Sie den Namen und speichern Sie die Datei.", vbExclamation
+            End
+        End If
+    Next
+
+    
+   ' With ThisWorkbook.Sheets("QM15")
+   ' .Range("I1").Value = "Problemcodetext"
+   ' .Range("D1").Value = "Auftrag"
+   ' End With
+   ' ThisWorkbook.Save
+End Sub
+
+
+Sub ungültige_namen_ersetzen()
+'    For Each h In ThisWorkbook.Sheets("QM11").Range("A1:Q1")
+'        If h.Value = "Beschreibung" Then
+'           Exit For
+'        End If
+'        If h.Value = "" Then
+'            h.Value = "Beschreibung"
+'            ThisWorkbook.Save
+'            Exit For
+'        End If
+'    Next
+
+
+    For Each h In ThisWorkbook.Sheets("QM15").Range("A1:Q1")
+        If h.Value = "Probl.Code.Txt" Then
+           h.Value = "Problemcodetext"
+        End If
+        If h.Value = "Probl.Code.Text" Then
+           h.Value = "Problemcodetext"
+        End If
+        If h.Value = "Fert.Auftrag" Then
+           h.Value = "Auftrag"
+        End If
+    Next
+End Sub
+
+
+Sub Datenverarbeitung()
+    'Notizen: Weder Sheetname noch Spaltenname darf Interpunktion enthälten (z.B. '.')
+    'Achtung, Problemcodetext ist manchmal als Poblemcodetext a und manchmal als Probl.Code.Txt (ungültig) bezeichnet
+    '1. Nimmt das Ergebniss der Transaktion QM11 und fügt zu den Arbeitsplatznummern die Bezeichnungen. Das Ergebnis
+    'wird in Sheet QM11 gespeichert.
+    '2. Berechnet Pareto der Fehler für den letzten Tag und für die Zeitperiode
+    '3. Berechnet Fehlermatrix = Pareto für die einzelnen Produkte
+    '4. Erstell Liste von aktuellen Meldungen - basiert auf QM15, zugefügt sind Übersetzungen von Arbeitzplatz (QM11) und Teilen
+    '5. Bereite eine E-Mail vor (Liste E-Mail Addressen auf Sheet emails)
+    
+    
+    Debug.Print ("Start")
+    Debug.Print (Time)
+    
+    
+    ungültige_namen_ersetzen 'Probl.Code.Text -> Problemcodetext (sonst funktionieren die SQL funktionen nicht) + speichern
+    namecheck
+    ThisWorkbook.Save
+    Dim cn As ADODB.Connection
+    Dim rs As ADODB.Recordset
+    Dim strFile As String
+    
+    strFile = ActiveWorkbook.FullName
+    shtName = ActiveSheet.name
+    strCon = "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & strFile _
+    & ";Extended Properties=""Excel 12.0;HDR=Yes;IMEX=1"";"
+    
+    Set cn = CreateObject("ADODB.Connection")
+    cn.Open strCon
+    
+    Set rs = CreateObject("ADODB.Recordset")
+    
+    '1
+    rs.Open "SELECT [Meldung],[Arbeitsplatz],[Arbeitsplatz$].[Beschreibung] AS [Beschreibung] FROM [QM11$] LEFT JOIN [Arbeitsplatz$] ON [QM11$].[Arbeitsplatz]=[Arbeitsplatz$].[ArbPltz];", cn
+    
+    Set qm11 = ActiveWorkbook.Sheets("QM11")
+        
+    For l = 0 To rs.Fields.Count - 1
+        qm11.Cells(1, l + 1) = rs(l).name
+    Next l
+    
+    qm11.Range("A2").CopyFromRecordset rs
+    
+    rs.Close
+    cn.Close 'connection must be closed so that workbook could be saved
+    
+    ThisWorkbook.Save
+    
+    cn.Open strCon
+    
+    'Kontrolle für Arbeitsplatzbeschreibung
+    rs.Open "SELECT DISTINCT Arbeitsplatz FROM [QM11$] WHERE Beschreibung IS Null OR Beschreibung='' ;", cn
+    
+    farbpltz = Null
+    
+    If (Not (rs.EOF) And Not (rs.BOF)) Then
+        farbpltz = rs.GetString
+    End If
+    
+    If Not (IsNull(farbpltz)) Then
+        MsgBox "Achtung, keine Beschreibung der Arbeitsplatz " + farbpltz + " gefunden. Möglicherweise Aktualisierung von Blatt Arbeitsplatz nötig.", vbExclamation
+    End If
+    rs.Close
+    
+    'End date
+    last_day = "SELECT MAX([Angelegt am]) FROM [QM15$]"
+    rs.Open last_day, cn
+    last_day = Left(rs.GetString, 8)
+    rs.Close
+    
+    'Start date
+    first_day = "SELECT MIN([Angelegt am]) FROM [QM15$]"
+    rs.Open first_day, cn
+    first_day = Left(rs.GetString, 8)
+    rs.Close
+    
+    '2
+    'Anzahl von Fehler letzter Tag(Summe)
+    fehlersum_last_day = "SELECT SUM([Fehlerzahl]) FROM [QM15$] WHERE ([Angelegt am] = '" + last_day + "');"
+    rs.Open fehlersum_last_day, cn
+    fehlersum_last_day = rs.GetString
+    rs.Close
+    
+    'Anzahl von Fehler während der ganzer Periode (Summe)
+    fehlersum_period = "SELECT SUM([Fehlerzahl]) FROM [QM15$]"
+    rs.Open fehlersum_period, cn
+    fehlersum_period = rs.GetString
+    rs.Close
+    
+    'pareto fehler während der ganzer Periode
+    pareto_period = "" + _
+        " SELECT * FROM" + _
+        "(SELECT [Problemcodetext],SUM([Fehlerzahl]) AS [Fehlerzahl_Zeitperiode],100*SUM([Fehlerzahl])/" + fehlersum_period + " AS [Fehleranteil_Zeitperiode]" + _
+        " FROM [QM15$] " + _
+        "GROUP BY [Problemcodetext] " + _
+        ") AS t1  "
+    
+    rs.Open pareto_period, cn
+    CreateSheet ("pareto_table")
+    Set sh2 = ActiveWorkbook.Sheets("pareto_table")
+    
+    For l = 0 To rs.Fields.Count - 1
+        sh2.Cells(1, l + 1) = rs(l).name
+    Next l
+    sh2.Range("A2").CopyFromRecordset rs
+    rs.Close
+    
+    'pareto fehler letzter Tag
+    pareto_last_day = "" + _
+        "SELECT t1.[Problemcodetext] AS [Problemcodetext],ROUND([Fehleranteil_Zeitperiode]) AS [Fehleranteil_Zeitperiode],ROUND([Fehleranteil_Letzter_Tag]) AS [Fehleranteil_Letzter_Tag],[Fehlerzahl_Zeitperiode],[Fehlerzahl_Letzter_Tag] FROM " + _
+        "(SELECT [Problemcodetext],SUM([Fehlerzahl]) AS [Fehlerzahl_Letzter_Tag],100*SUM([Fehlerzahl])/" + fehlersum_last_day + " AS [Fehleranteil_Letzter_Tag] " + _
+        "FROM [QM15$] " + _
+        "WHERE [Angelegt am]='" + last_day + "'" + _
+        "GROUP BY [Problemcodetext] " + _
+        ") AS t1 " + _
+        "RIGHT JOIN [pareto_table$] ON t1.[Problemcodetext]=[pareto_table$].[Problemcodetext];"
+    
+    rs.Open pareto_last_day, cn
+    
+    For l = 0 To rs.Fields.Count - 1
+        sh2.Cells(1, l + 1) = rs(l).name
+    Next l
+    sh2.Range("A2").CopyFromRecordset rs
+    rs.Close
+    
+    Dim imgfilepath As String
+    imgfilepath = Environ$("temp") & "/" + "pareto.png"
+    
+    pareto_chart "pareto_table", first_day, last_day, fehlersum_last_day, fehlersum_period, imgfilepath
+    
+    'Fehlermatrix
+    sql1 = "SELECT * FROM (" + _
+    "SELECT [Material],[Problemcodetext],SUM([Fehlerzahl]) AS [Fehlersum] " + _
+    "FROM [QM15$] " + _
+    "WHERE [Angelegt am]='" + last_day + "'" + _
+    "GROUP BY [Material],[Problemcodetext]  " + _
+    ") AS t1 " + _
+    "LEFT JOIN [SAPnos$] ON [SAPnos$].[Artikel SAP]=t1.[Material] " + _
+    "ORDER BY [Material],[Problemcodetext]" 'Gruppierung nach Produkten + Summe von Fehlerzahl
+    
+    strSQL = "TRANSFORM Sum([Fehlersum]) " + _
+            " SELECT [Material],[Artikel] FROM (" + sql1 + ") " + _
+            " GROUP BY [Material],[Artikel]" + _
+            " PIVOT [Problemcodetext]"
+    
+    rs.Open strSQL, cn
+    
+    CreateSheet ("Fehlermatrix")
+    Set fm = ActiveWorkbook.Sheets("Fehlermatrix")
+    
+    For l = 0 To rs.Fields.Count - 1
+        fm.Cells(1, l + 1) = rs(l).name
+    Next l
+    fm.Range("A2").CopyFromRecordset rs
+    
+    rs.Close
+    cn.Close
+    condformat fm.UsedRange
+    add_grid fm.UsedRange
+    
+    meldungen_heute
+    top10_in30
+    
+    Mail imgfilepath, strFile, "Ausschussreport " + Str(last_day)
+
+End Sub
+
+Sub pareto_chart(sh, first_day, last_day, fehlersum_last_day, fehlersum_period, imgfilepath)
+    Dim chrt As Chart
+    Application.DisplayAlerts = False
+    On Error Resume Next
+    ThisWorkbook.Charts.Delete
+    On Error GoTo 0
+    Application.DisplayAlerts = True
+    Set chrt = ThisWorkbook.Charts.Add
+
+    
+    With ThisWorkbook.Sheets(sh)
+       end_ind = .Range("A" & .Rows.Count).End(xlUp).Row
+    End With
+    
+    For Each s In chrt.SeriesCollection
+      s.Delete
+    Next s
+    
+    Dim ser1 As Variant
+    Dim ser2 As Variant
+    Dim tot1 As Variant
+    Dim tot2 As Variant
+    
+    With ThisWorkbook.Sheets(sh)
+        ser1 = .Range(.Cells(2, 2), .Cells(end_ind, 2)).Value
+        ser2 = .Range(.Cells(2, 3), .Cells(end_ind, 3)).Value
+        tot1 = .Range(.Cells(2, 4), .Cells(end_ind, 4)).Value
+        tot2 = .Range(.Cells(2, 5), .Cells(end_ind, 5)).Value
+    End With
+    
+    dayF = Mid(Str(first_day), 8, 2) + "." + Mid(Str(first_day), 6, 2) + "." + Mid(Str(first_day), 2, 4)
+    dayL = Mid(Str(last_day), 8, 2) + "." + Mid(Str(last_day), 6, 2) + "." + Mid(Str(last_day), 2, 4)
+    
+    With chrt
+      .name = sh + "_chart"
+      .ChartType = xlColumnClustered
+      .SeriesCollection.NewSeries
+      .SeriesCollection(1).name = dayF + " - " + dayL
+      .SeriesCollection(1).Values = ser1
+      .SeriesCollection.NewSeries
+      .SeriesCollection(2).name = dayL
+      .SeriesCollection(2).Values = ser2
+      .SeriesCollection(2).XValues = "='" + sh + "'!$A$2:$A$" + Trim(Str(end_ind))
+      .Axes(xlCategory, xlPrimary).HasTitle = True
+      .Axes(xlCategory, xlPrimary).AxisTitle.Characters.Text = "Fehlerart"
+      .Axes(xlValue, xlPrimary).HasTitle = True
+      .Axes(xlValue, xlPrimary).AxisTitle.Characters.Text = "Anteil (%)"
+      .HasLegend = True
+      .HasTitle = True
+      .ChartTitle.Text = "Ausschussmenge und -anteil in definierten Zeitperioden"
+      
+      For n = 1 To 2
+        With .SeriesCollection(n)
+                .ApplyDataLabels
+            For i = 1 To end_ind - 1
+            Select Case n
+               Case 1
+                    With .Points(i)
+                             .DataLabel.Text = tot1(i, 1)
+                             .DataLabel.Font.Bold = False
+                             .DataLabel.Font.Size = 9
+                             .DataLabel.HorizontalAlignment = xlLeft
+                    End With
+               Case 2
+                    With .Points(i)
+                             .DataLabel.Text = tot2(i, 1)
+                             .DataLabel.Font.Bold = True
+                             .DataLabel.Font.Size = 12
+                             .DataLabel.HorizontalAlignment = xlRight
+                    End With
+            End Select
+            Next i
+        End With
+        Next n
+   
+   End With
+   
+   chrt.Export imgfilepath, "PNG"
+     
+End Sub
+
+Private Sub CreateSheet(name)
+    Dim ws As Worksheet
+    If Not (SheetExists(name)) Then
+        With ActiveWorkbook
+            Set ws = .Sheets.Add(After:=.Sheets(.Sheets.Count))
+            ws.name = name
+        End With
+    Else
+    ActiveWorkbook.Sheets(name).Cells.Clear
+    End If
+End Sub
+
+
+Function SheetExists(shtName, Optional wb As Workbook) As Boolean
+    Dim sht As Worksheet
+
+    If wb Is Nothing Then Set wb = ActiveWorkbook
+    On Error Resume Next
+    Set sht = wb.Sheets(shtName)
+    On Error GoTo 0
+    SheetExists = Not sht Is Nothing
+End Function
+ 
+ 
+Function ChartExists(shtName, Optional wb As Workbook) As Boolean
+    Dim sht As Chart
+
+    If wb Is Nothing Then Set wb = ActiveWorkbook
+    On Error Resume Next
+    Set sht = wb.Charts(shtName)
+    On Error GoTo 0
+    ChartExists = Not sht Is Nothing
+End Function
+
+Sub top10_in30()
+    Dim cn As ADODB.Connection
+    Dim rs As ADODB.Recordset
+    
+    strFile = ActiveWorkbook.FullName
+    strCon = "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & strFile _
+    & ";Extended Properties=""Excel 12.0;HDR=Yes;IMEX=1"";"
+    
+    Set cn = CreateObject("ADODB.Connection")
+    cn.Open strCon
+    
+    Set rs = CreateObject("ADODB.Recordset")
+    
+    first_day = "SELECT MIN([Angelegt am]) FROM [QM15$]"
+    rs.Open first_day, cn
+    first_day = Left(rs.GetString, 8)
+    rs.Close
+    last_day = "SELECT MAX([Angelegt am]) FROM [QM15$]"
+    rs.Open last_day, cn
+    last_day = Left(rs.GetString, 8)
+    day30 = Mid(Str(Int(last_day) - 30), 2)
+    rs.Close
+    
+    If (Int(first_day) < Int(day30)) Then
+        heading_2 = "in letzten 30 Tagen"
+    Else
+        heading_2 = "in letzten " + Str(Int(last_day) + 1 - Int(first_day)) + " Tagen"
+    End If
+    
+    sql2 = "SELECT * FROM (" + _
+           "SELECT [Material],[Problemcodetext], [Fehlerzahl],[Meldung],[Angelegt am] " + _
+           "FROM [QM15$] " + _
+           "WHERE [Angelegt am]>='" + day30 + "'" + _
+           ") AS t1 " + _
+           "LEFT JOIN [SAPnos$] ON [SAPnos$].[Artikel SAP]=t1.[Material] " + _
+           "ORDER BY [Material],[Problemcodetext]"
+    
+    sql3 = "SELECT [Angelegt am],[Problemcodetext], [Fehlerzahl],[Beschreibung],[Artikel],[Arbeitsplatz],t2.[Meldung] AS [Meldung] FROM (" + sql2 + ") AS t2 " + _
+           "LEFT JOIN [QM11$] ON [QM11$].[Meldung]=t2.[Meldung] " + _
+           "ORDER BY [Fehlerzahl] DESC"
+    
+    sql4 = "SELECT TOP 20 * FROM (" + sql3 + ")"
+    
+    rs.Open sql4, cn
+    
+    CreateSheet ("Top10In30")
+    Set am = ActiveWorkbook.Sheets("Top10In30")
+    
+    am.Range("A2").CopyFromRecordset rs
+    For l = 0 To rs.Fields.Count - 1
+        am.Cells(1, l + 1) = rs(l).name
+    Next l
+    
+    rs.Close
+    am.Activate
+    
+    Range("A1:G1").Select
+    Selection.Font.Bold = True
+    Range("A1").Select
+
+    condformat am.UsedRange
+    add_grid am.UsedRange
+
+End Sub
+
+Sub meldungen_heute()
+    
+    Dim cn As ADODB.Connection
+    Dim rs As ADODB.Recordset
+    
+    strFile = ActiveWorkbook.FullName
+    strCon = "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & strFile _
+    & ";Extended Properties=""Excel 12.0;HDR=Yes;IMEX=1"";"
+    
+    Set cn = CreateObject("ADODB.Connection")
+    cn.Open strCon
+    
+    Set rs = CreateObject("ADODB.Recordset")
+    
+    last_day = "SELECT MAX([Angelegt am]) FROM [QM15$]"
+    rs.Open last_day, cn
+    last_day = Left(rs.GetString, 8)
+    rs.Close
+    
+    sql2 = "SELECT * FROM (" + _
+           "SELECT [Material],[Problemcodetext],[Fehlerzahl],[Meldung] " + _
+           "FROM [QM15$] " + _
+           "WHERE [Angelegt am]='" + last_day + "'" + _
+           ") AS t1 " + _
+           "LEFT JOIN [SAPnos$] ON [SAPnos$].[Artikel SAP]=t1.[Material] " + _
+           "ORDER BY [Material],[Problemcodetext]"
+    
+    sql3 = "SELECT [Problemcodetext],[Fehlerzahl],[Beschreibung],[Artikel],[Arbeitsplatz],t2.[Meldung] AS [Meldung],[Material] FROM (" + sql2 + ") AS t2 " + _
+           "LEFT JOIN [QM11$] ON [QM11$].[Meldung]=t2.[Meldung] " + _
+           "ORDER BY [Problemcodetext] ,[Fehlerzahl] DESC"
+    
+    On Error GoTo eh
+    rs.Open sql3, cn
+    On Error GoTo 0
+    
+    CreateSheet ("Aktuelle_Meldungen")
+    Set am = ActiveWorkbook.Sheets("Aktuelle_Meldungen")
+    
+    am.Range("A2").CopyFromRecordset rs
+    For l = 0 To rs.Fields.Count - 1
+        am.Cells(1, l + 1) = rs(l).name
+    Next l
+    
+    rs.Close
+    cn.Close
+    
+    ThisWorkbook.Save
+    
+    cn.Open strCon
+    rs.Open "SELECT DISTINCT [Meldung] FROM [Aktuelle_Meldungen$] WHERE [Arbeitsplatz] IS Null OR [Arbeitsplatz]='' ;", cn
+    
+    fmeld = Null
+    
+    If (Not (rs.EOF) And Not (rs.BOF)) Then
+        fmeld = rs.GetString
+    End If
+    
+    If Not (IsNull(fmeld)) Then
+        MsgBox "Achtung, kein Arbeitsplatz für die Meldungen " + fmeld + " gefunden. Wahrscheinlich einige Meldungen von QM15 nicht auch in QM11 vorhanden. Bitte kontrollieren, ob die SAP Transaktionen gut ausgeführt und kopiert wurden.", vbExclamation
+    End If
+    rs.Close
+    
+    am.Activate
+    
+    Range("A1:G1").Select
+    Selection.Font.Bold = True
+    
+    Cells.Select
+    Selection.Columns.AutoFit
+    am.UsedRange.Select
+    condformat am.UsedRange
+    add_grid am.UsedRange
+    am.Range("A1").Select
+
+Done:
+   Exit Sub
+eh:
+   Debug.Print Err.Description
+   MsgBox ("Fehler: Wahrscheinlich wurde der Label Beschreibung in QM11 nicht gefunden. Bitte Worksheet speichern und erneut versuchen das Makro durchzuführen. " + Str(Err.Number) + Err.Description)
+   End
+End Sub
+
+Sub colortest()
+    For i = 1 To 56
+    Cells(i, 1).Interior.ColorIndex = i
+    Next
+End Sub
+
+
+Sub condformat(r As Range)
+    
+    m = Application.WorksheetFunction.Max(r)
+    
+    Dim a As Range
+    For Each a In r
+        Select Case a.Value
+            Case Is <= 0: a.Interior.ColorIndex = 0 'ohne Farbe
+            Case Is <= 1: a.Interior.ColorIndex = 43 'Grün
+            Case Is <= 10: a.Interior.ColorIndex = 36 'Gelb
+            Case Is < m: a.Interior.ColorIndex = 45 'Orange
+            Case Is > 1000000: a.Interior.ColorIndex = 0 'Texte ohne Farbe
+            Case Is >= m: a.Interior.ColorIndex = 3 'Rot
+        End Select
+    Next
+
+End Sub
+
+
+Function get_emails()
+    x = ""
+    For i = 2 To 1000
+        y = ThisWorkbook.Sheets("emails").Cells(i, 1).Value
+        If y = "" Then
+            Exit For
+        End If
+        x = x + ThisWorkbook.Sheets("emails").Cells(i, 1).Value + ";"
+    Next
+    
+    get_emails = x
+End Function
+
+Sub add_grid(r As Range)
+    With r.Borders
+            .LineStyle = xlContinuous
+            .ColorIndex = 0
+            .TintAndShade = 0
+            .Weight = xlThin
+    End With
+    r.Columns.AutoFit
+End Sub
+
+Sub Mail(anlagepath As String, anlagepath2 As String, subject As String)
+
+    Dim rng As Range
+    Dim rng2 As Range
+    Dim OutApp As Object
+    Dim OutMail As Object
+    
+    Set rng = Nothing
+    Set rng2 = Nothing
+    ' Only send the visible cells in the selection.
+    
+    Set rng = Sheets("Aktuelle_Meldungen").UsedRange
+    Set rng2 = Sheets("Top10In30").UsedRange
+    
+    If rng Is Nothing Then
+        MsgBox "The selection is not a range or the sheet is protected. " & _
+               vbNewLine & "Please correct and try again.", vbOKOnly
+        Exit Sub
+    End If
+    
+    With Application
+        .EnableEvents = False
+        .ScreenUpdating = False
+    End With
+    
+    Set OutApp = CreateObject("Outlook.Application")
+    Set OutMail = OutApp.CreateItem(0)
+    
+    body = "<h3>Pareto Ausschuss - Vergleich aktueller Tag mit definierter Zeitperiode</h3>"
+    body = body + RangetoHTML(rng)
+    body = Replace(body, "<body>", _
+                              "<img src='cid:pareto.png'" & "width='700' height='450'> <body> <h3>Meldungen - Letzter Tag</h3>")
+    body = body + "<h3>Top 20 Meldungen " + heading_2 + "</h3>" + RangetoHTML(rng2)
+    body = Replace(body, "align=center x:publishsource=", _
+                              "align=left x:publishsource=")
+    
+    With OutMail
+        .To = get_emails
+        .CC = ""
+        .BCC = ""
+        .subject = subject
+        .Attachments.Add anlagepath
+        .Attachments.Add anlagepath2
+        .HTMLBody = body
+        .Display
+    End With
+    On Error GoTo 0
+    
+    With Application
+        .EnableEvents = True
+        .ScreenUpdating = True
+    End With
+    
+    Set OutMail = Nothing
+    Set OutApp = Nothing
+End Sub
+
+
+Function RangetoHTML(rng As Range)
+' By Ron de Bruin.
+    Dim fso As Object
+    Dim ts As Object
+    Dim TempFile As String
+    Dim TempWB As Workbook
+
+    TempFile = Environ$("temp") & "/" & Format(Now, "dd-mm-yy h-mm-ss") & ".htm"
+
+    'Copy the range and create a new workbook to past the data in
+    rng.Copy
+    Set TempWB = Workbooks.Add(1)
+    With TempWB.Sheets(1)
+        .Cells(1).PasteSpecial Paste:=8
+        .Cells(1).PasteSpecial xlPasteValues, , False, False
+        .Cells(1).PasteSpecial xlPasteFormats, , False, False
+        .Cells(1).Select
+        Application.CutCopyMode = False
+        On Error Resume Next
+        .DrawingObjects.Visible = True
+        .DrawingObjects.Delete
+        On Error GoTo 0
+    End With
+
+    'Publish the sheet to a htm file
+    With TempWB.PublishObjects.Add( _
+         SourceType:=xlSourceRange, _
+         Filename:=TempFile, _
+         sheet:=TempWB.Sheets(1).name, _
+         Source:=TempWB.Sheets(1).UsedRange.Address, _
+         HtmlType:=xlHtmlStatic)
+        .Publish (True)
+    End With
+
+    'Read all data from the htm file into RangetoHTML
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set ts = fso.GetFile(TempFile).OpenAsTextStream(1, -2)
+    RangetoHTML = ts.ReadAll
+    ts.Close
+
+
+    'Close TempWB
+    TempWB.Close savechanges:=False
+
+    'Delete the htm file we used in this function
+    Kill TempFile
+
+    Set ts = Nothing
+    Set fso = Nothing
+    Set TempWB = Nothing
+End Function
+
+Sub QM15loeschen()
+
+ThisWorkbook.Sheets("QM15").UsedRange.Clear
+
+End Sub
+
+Sub QM11loeschen()
+
+ThisWorkbook.Sheets("QM11").UsedRange.Clear
+
+End Sub
+
+
